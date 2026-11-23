@@ -162,7 +162,6 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
       <div><label>Whale order ≥ BTC</label><input id="sWO" inputmode="decimal"></div>
       <div><label>Edge needed (pts)</label><input id="sThr" inputmode="decimal"></div>
       <div><label>Kalshi proxy (optional)</label><input id="sProxy" placeholder="none"></div>
-      <div><label>Late-entry mode</label><label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text);margin-top:8px"><input type="checkbox" id="sLate" style="width:20px;height:20px"> GO only from minute 12</label></div>
     </div>
     <div style="margin-top:8px"><button id="sSave">Save</button></div>
     <details style="margin-top:10px"><summary>How the meters work</summary>
@@ -186,7 +185,7 @@ const SERIES = "KXBTC15M";
 const BAND = 0.0025;
 const REST_MS = 10000; // a big quote must rest this long to count as a whale order // book changes counted within ±0.25% of price
 const WEIGHTS = { book: 0.15, oflow: 0.20, taker: 0.25, whale: 0.10, mom: 0.20, trend: 0.10 };
-const cfg = { wt: +(localStorage.getItem("wt") || 1), wo: +(localStorage.getItem("wo") || 10), thr: +(localStorage.getItem("thr") || 5), proxy: localStorage.getItem("kalshiProxy") || "", late: (localStorage.getItem("late") ?? "1") === "1" };
+const cfg = { wt: +(localStorage.getItem("wt") || 1), wo: +(localStorage.getItem("wo") || 10), thr: +(localStorage.getItem("thr") || 5), proxy: localStorage.getItem("kalshiProxy") || "", late: false };
 // debug: ?now=2026-11-23T13:04:00-08:00 shifts the clock for the entry rules
 const NOW_OFF = (() => { const q = new URLSearchParams(location.search).get("now"); const t = q ? Date.parse(q) : NaN; return isFinite(t) ? t - Date.now() : 0; })();
 const nowMs = () => Date.now() + NOW_OFF;
@@ -511,8 +510,7 @@ function init() {
   makeGauge($("gEntry"), "", "Down", "Up"); makeGauge($("gAll"), "");
   $("meters").innerHTML = METERS.map(([k]) => `<div class="meter gwrap" id="m_${k}"></div>`).join("");
   for (const [k, n] of METERS) makeGauge($("m_" + k), n);
-  $("sWT").value = cfg.wt; $("sWO").value = cfg.wo; $("sThr").value = cfg.thr; $("sProxy").value = cfg.proxy; $("sLate").checked = cfg.late;
-  $("sLate").onchange = () => { cfg.late = $("sLate").checked; localStorage.setItem("late", cfg.late ? "1" : "0"); render(); };
+  $("sWT").value = cfg.wt; $("sWO").value = cfg.wo; $("sThr").value = cfg.thr; $("sProxy").value = cfg.proxy;
   $("sSave").onclick = () => { cfg.wt = +$("sWT").value || 1; cfg.wo = +$("sWO").value || 10; cfg.thr = +$("sThr").value || 5; cfg.proxy = $("sProxy").value.trim();
     localStorage.setItem("wt", cfg.wt); localStorage.setItem("wo", cfg.wo); localStorage.setItem("thr", cfg.thr); localStorage.setItem("kalshiProxy", cfg.proxy); S.k.base = null; S.k.nextProbe = 0; kalshiLoop(); };
   connectCb(); connectKr(); loadCandles(); kalshiLoop();
