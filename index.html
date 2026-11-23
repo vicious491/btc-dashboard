@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>BTC Live Order Flow + Kalshi 15-min</title>
+<style>
+:root{--bg:#0b0e13;--card:#131820;--card2:#1a212c;--line:#242d3a;--text:#e8edf4;--muted:#8a96a8;--dim:#5d6878;--bull:#22c55e;--bear:#ef4444;--warn:#f59e0b;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;-webkit-text-size-adjust:100%}
+.wrap{max-width:1280px;margin:0 auto;padding:max(12px,env(safe-area-inset-top)) 12px 40px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+h1{font-size:17px;margin:0;font-weight:700}
+.feeds{display:flex;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--muted)}
+.feed{display:flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px 9px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}.dot.ok{background:var(--bull);box-shadow:0 0 6px var(--bull)}.dot.bad{background:var(--bear)}.dot.mid{background:var(--warn)}
+.grid{display:grid;gap:10px;grid-template-columns:1fr}
+@media(min-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.span2{grid-column:span 2}}
+@media(min-width:1100px){.grid{grid-template-columns:repeat(3,1fr)}.span2{grid-column:span 2}.span3{grid-column:span 3}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.card h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px;font-weight:650}
+.entryTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.callword{font-size:34px;font-weight:850;letter-spacing:-.02em;line-height:1}
+.callword.up{color:var(--bull)}.callword.down{color:var(--bear)}.callword.wait{color:var(--muted)}
+.strength{font-size:13px;font-weight:700;margin-top:4px}
+.why{color:var(--muted);font-size:13px;margin-top:6px}
+.count{font:700 34px/1 var(--mono);text-align:right}.count.hot{color:var(--warn)}
+.sub{color:var(--muted);font-size:12px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:14px;margin-top:10px}.kv>div:nth-child(odd){color:var(--muted)}.kv>div:nth-child(even){text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.pos{color:var(--bull)}.neg{color:var(--bear)}
+.gwrap{text-align:center}
+.gwrap svg{width:100%;max-width:230px;height:auto;display:block;margin:0 auto}
+#gAll svg,#gEntry svg{max-width:300px}
+.needle{transition:transform .9s cubic-bezier(.2,.8,.2,1);transform-origin:100px 100px}
+.gname{font-size:12px;font-weight:650;color:var(--text);margin-bottom:2px;text-align:left}
+.gval{font:700 20px/1 var(--mono)}
+.gword{font-size:11px;color:var(--muted);margin-top:2px}
+.gdet{font-size:10.5px;color:var(--dim);font-family:var(--mono);margin-top:4px;min-height:14px}
+.meters{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(min-width:760px){.meters{grid-template-columns:repeat(3,1fr)}}
+.meter{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px}
+.entryGrid{display:grid;grid-template-columns:1fr;gap:6px;margin-top:10px}.entryGrid .gwrap{max-width:300px;margin:0 auto;width:100%}
+@media(min-width:600px){.entryGrid{grid-template-columns:1fr 1fr;gap:14px}}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{padding:5px 4px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}th{font-family:inherit;color:var(--muted);font-weight:500;font-size:11px}th:first-child,td:first-child{text-align:left;font-family:inherit}
+.tape{font:12px/1.5 var(--mono);max-height:260px;overflow:auto}
+.tape div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:3px 0}
+input{background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 9px;font:15px var(--mono);width:100%}
+label{font-size:11px;color:var(--muted);display:block;margin-bottom:3px}
+.inputs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+button{background:var(--card2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px}
+.chart{width:100%;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted);margin-top:6px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.note{font-size:11.5px;color:var(--dim);margin-top:14px}
+details summary{cursor:pointer;color:var(--muted);font-size:13px}
+.tag{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--card2);color:var(--muted);border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>BTC Live Order Flow <span class="sub" id="clock"></span></h1>
+  <div class="feeds">
+    <div class="feed"><span class="dot" id="dCb"></span>Coinbase <span id="fCb">…</span></div>
+    <div class="feed"><span class="dot" id="dKr"></span>Kraken <span id="fKr">…</span></div>
+    <div class="feed"><span class="dot" id="dK"></span>Kalshi target <span id="fK">…</span></div>
+  </div>
+</header>
+
+<div class="grid">
+  <!-- ENTRY -->
+  <div class="card span2" id="entryCard">
+    <h2>Kalshi 15-min entry meter</h2>
+    <div class="entryTop">
+      <div>
+        <div class="callword wait" id="call">WAIT</div>
+        <div class="strength" id="strength"></div>
+      </div>
+      <div><div class="count" id="count">--:--</div><div class="sub" id="winLabel" style="text-align:right"></div></div>
+    </div>
+    <div class="why" id="why">Connecting to live order books…</div>
+    <div class="entryGrid">
+      <div class="gwrap" id="gEntry"></div>
+      <div>
+        <div class="kv" style="margin-top:0">
+          <div>Target</div><div id="vTarget">—</div>
+          <div>BTC now</div><div id="vSpot">—</div>
+          <div>Gap</div><div id="vGap">—</div>
+          <div>Model P(Up)</div><div id="vPm">—</div>
+          <div>Pay at most</div><div id="vMax">—</div>
+          <div>Kalshi Up / Down</div><div id="vK">—</div>
+          <div>Edge Up / Down</div><div id="vEdge">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="inputs">
+      <div><label>Target override $</label><input id="mTarget" inputmode="decimal" placeholder="auto"></div>
+      <div><label>Kalshi Up ¢</label><input id="mUp" inputmode="decimal" placeholder="opt."></div>
+      <div><label>Kalshi Down ¢</label><input id="mDn" inputmode="decimal" placeholder="opt."></div>
+    </div>
+  </div>
+
+  <!-- OVERALL -->
+  <div class="card">
+    <h2>Overall bull / bear</h2>
+    <div class="gwrap" id="gAll"></div>
+  </div>
+
+  <!-- METERS -->
+  <div class="card span3">
+    <h2>Live meters (−100 bearish … +100 bullish, every second)</h2>
+    <div class="meters" id="meters"></div>
+  </div>
+
+  <div class="card span2">
+    <h2>Price vs target, this window</h2>
+    <svg class="chart" id="cPrice" viewBox="0 0 600 170" preserveAspectRatio="none" style="height:170px"></svg>
+    <div class="legend"><span><span class="sw" style="background:#22c55e"></span>BTC (per second)</span><span><span class="sw" style="background:#8a96a8"></span>Target</span><span id="priceRange"></span></div>
+  </div>
+
+  <div class="card">
+    <h2>Orders coming &amp; going (BTC)</h2>
+    <table id="tFlow"><thead><tr><th></th><th>1 s</th><th>10 s</th><th>60 s</th></tr></thead><tbody></tbody></table>
+    <div class="sub" style="margin-top:6px">Book changes within ±0.25% of price, Coinbase + Kraken. "Pulled" = size removed minus what was filled.</div>
+  </div>
+
+  <div class="card span2">
+    <h2>Net flow per second, last 5 min</h2>
+    <svg class="chart" id="cFlow" viewBox="0 0 600 200" preserveAspectRatio="none" style="height:200px"></svg>
+    <div class="legend"><span>Top: taker buys − sells (filled)</span><span>Bottom: book net (bids added − pulled) − (asks added − pulled)</span><span id="flowScale"></span></div>
+  </div>
+
+  <div class="card">
+    <h2>Whale tape</h2>
+    <div class="tape" id="tape"><div><span class="sub">Waiting for large orders…</span></div></div>
+  </div>
+
+  <div class="card span3">
+    <h2>Settings</h2>
+    <div class="inputs" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+      <div><label>Whale trade ≥ BTC</label><input id="sWT" inputmode="decimal"></div>
+      <div><label>Whale order ≥ BTC</label><input id="sWO" inputmode="decimal"></div>
+      <div><label>Edge needed (pts)</label><input id="sThr" inputmode="decimal"></div>
+      <div><label>Kalshi proxy (optional)</label><input id="sProxy" placeholder="none"></div>
+    </div>
+    <div style="margin-top:8px"><button id="sSave">Save</button></div>
+    <details style="margin-top:10px"><summary>How the meters work</summary>
+      <div class="sub" style="margin-top:6px;line-height:1.5">
+      Book pressure: resting bid vs ask size within 0.1% and 0.5% of price. Order flow: over 30 s, (bids added − bids pulled) − (asks added − asks pulled). Taker flow: market buys vs sells filled, 10 s and 60 s. Whales: trades and single orders above the whale sizes over 3 min (big quotes must rest 10 s to count, which filters market-maker flicker). Momentum: 10 s, 1 min and 5 min returns scaled by volatility. Trend: net 5-min move divided by total path travelled. Overall = 15% book, 20% order flow, 25% taker, 10% whales, 20% momentum, 10% trend. Each meter is smoothed over a few seconds.<br><br>
+      Entry: P(Up) = Φ(ln(price/target) / (σ·√t) + 0.5·overall/100), with t = minutes left adjusted for Kalshi's 60-second settlement average. GO when P is between 62% and 95% (or 5–38% for Down) and the overall meter agrees; never in the last minute. With Kalshi prices it also needs edge = P − price − fee ≥ the threshold, and the side must cost 5–95¢. "Pay at most" is the highest price that still clears the threshold.<br><br>
+      Target: from Kalshi when a proxy is set, otherwise the 60-second average Coinbase price just before the window opened (Kalshi's rule uses the CF Benchmarks index, so it can differ by a few dollars). Type the exact target from Kalshi into the override box for best results.
+      </div>
+    </details>
+  </div>
+</div>
+<div class="note">Probability estimate from public order flow, not a guarantee. 15-minute moves are close to coin flips; size bets small.</div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const CB_WS = "wss://ws-feed.exchange.coinbase.com", CB_REST = "https://api.exchange.coinbase.com/products/BTC-USD";
+const KR_WS = "wss://ws.kraken.com/v2";
+const SERIES = "KXBTC15M";
+const BAND = 0.0025;
+const REST_MS = 10000; // a big quote must rest this long to count as a whale order // book changes counted within ±0.25% of price
+const WEIGHTS = { book: 0.15, oflow: 0.20, taker: 0.25, whale: 0.10, mom: 0.20, trend: 0.10 };
+const cfg = { wt: +(localStorage.getItem("wt") || 1), wo: +(localStorage.getItem("wo") || 10), thr: +(localStorage.getItem("thr") || 5), proxy: localStorage.getItem("kalshiProxy") || "" };
+
+// ---------- state ----------
+const S = {
+  price: null, bid: null, ask: null,
+  books: { cb: { bids: new Map(), asks: new Map(), ready: false }, kr: { bids: new Map(), asks: new Map(), ready: false } },
+  feed: { cb: { ok: false, last: 0 }, kr: { ok: false, last: 0 } },
+  hist: [],        // closed 1-second buckets
+  cur: null,
+  candles: [],     // [t, o, h, l, c]
+  sigma1m: null,
+  whales: [],
+  agg: new Map(),  // taker order aggregation for whale detection
+  bigAdds: new Map(), bigSince: new Map(),
+  meters: { book: 0, oflow: 0, taker: 0, whale: 0, mom: 0, trend: 0, all: 0 },
+  raw: {},
+  k: { base: null, ok: false, market: null, last: 0, err: "", nextProbe: 0 },
+  manualKey: null,
+};
+function newBucket(sec) { return { s: sec, buy: 0, sell: 0, bidAdd: 0, bidRem: 0, askAdd: 0, askRem: 0, wBuy: 0, wSell: 0, wBidAdd: 0, wAskAdd: 0, wBidPull: 0, wAskPull: 0, price: S.price }; }
+function B() { const s = Math.floor(Date.now() / 1000); if (!S.cur) S.cur = newBucket(s); if (S.cur.s !== s) rollBucket(s); return S.cur; }
+function rollBucket(s) {
+  const c = S.cur; c.price = S.price; c.bidPull = Math.max(0, c.bidRem - c.sell); c.askPull = Math.max(0, c.askRem - c.buy);
+  S.hist.push(c);
+  // fill silent seconds so the per-second series has no holes
+  for (let x = c.s + 1; x < s && x - c.s < 30; x++) S.hist.push(Object.assign(newBucket(x), { bidPull: 0, askPull: 0 }));
+  if (S.hist.length > 1300) S.hist.splice(0, S.hist.length - 1300);
+  S.cur = newBucket(s);
+}
+
+// ---------- math ----------
+function phi(x) { const t = 1 / (1 + 0.2316419 * Math.abs(x)); const d = 0.3989423 * Math.exp(-x * x / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x > 0 ? 1 - p : p; }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const imb = (a, b) => (a + b > 0 ? (a - b) / (a + b) : 0);
+const fee = (p) => 0.07 * p * (1 - p);
+const usd = (v, d = 2) => v == null || !isFinite(v) ? "—" : "$" + v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const sgn = (v, d = 0) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d);
+const tstr = (ms, sec) => new Date(ms).toLocaleTimeString([], sec ? { hour: "numeric", minute: "2-digit", second: "2-digit" } : { hour: "numeric", minute: "2-digit" });
+const mid = () => (S.bid && S.ask ? (S.bid + S.ask) / 2 : S.price);
+
+// ---------- book + trade handlers ----------
+function applyLevel(ex, side, price, size) {
+  const bk = S.books[ex], map = side === "bid" ? bk.bids : bk.asks;
+  const old = map.get(price) || 0; if (size === 0) map.delete(price); else map.set(price, size);
+  if (!bk.ready) return; const m = mid(); if (!m || Math.abs(price - m) / m > BAND) return;
+  const d = size - old; if (!d) return; const b = B();
+  if (side === "bid") { if (d > 0) b.bidAdd += d; else b.bidRem -= d; } else { if (d > 0) b.askAdd += d; else b.askRem -= d; }
+  // Whale orders: market makers flash big quotes on and off many times a second, so a big add only
+  // counts once it has rested REST_MS, and a big pull only if that size had been resting that long.
+  if (Math.abs(d) >= cfg.wo && Math.abs(price - m) / m <= 0.001) {
+    const key = ex + side + price, now = Date.now();
+    if (d > 0 && !S.bigAdds.has(key)) S.bigAdds.set(key, { t: now, ex, side, price, size: d });
+    else { const pend = S.bigAdds.get(key); S.bigAdds.delete(key); const since = S.bigSince.get(key);
+      if (!pend && since && now - since >= REST_MS) { if (side === "bid") b.wBidPull -= d; else b.wAskPull -= d; whale({ ex, kind: "pull", side, size: -d, price }); } }
+  }
+  if (size >= cfg.wo) { const key = ex + side + price; if (!S.bigSince.has(key)) S.bigSince.set(key, Date.now()); } else if (old >= cfg.wo) S.bigSince.delete(ex + side + price);
+}
+function confirmBigAdds() { const now = Date.now(); const b = B();
+  for (const [key, a] of S.bigAdds) { if (now - a.t < REST_MS) continue; S.bigAdds.delete(key);
+    const cur = (a.side === "bid" ? S.books[a.ex].bids : S.books[a.ex].asks).get(a.price) || 0;
+    if (cur >= a.size * 0.8) { if (a.side === "bid") b.wBidAdd += a.size; else b.wAskAdd += a.size; whale({ ex: a.ex, kind: "add", side: a.side, size: a.size, price: a.price }); } } }
+function onTrade(ex, takerBuy, size, price, key) {
+  const b = B(); if (takerBuy) b.buy += size; else b.sell += size;
+  if (!S.price || ex === "cb") S.price = price;
+  const k = ex + ":" + key; const now = Date.now(); let a = S.agg.get(k);
+  if (!a) { a = { size: 0, t: now, done: false }; S.agg.set(k, a); }
+  a.size += size;
+  if (!a.done && a.size >= cfg.wt) { a.done = true; if (takerBuy) b.wBuy += a.size; else b.wSell += a.size; whale({ ex, kind: "trade", side: takerBuy ? "buy" : "sell", size: a.size, price }); }
+  else if (a.done) { if (takerBuy) b.wBuy += size; else b.wSell += size; }
+}
+function whale(e) { e.t = Date.now(); S.whales.unshift(e); if (S.whales.length > 60) S.whales.length = 60; }
+
+// ---------- Coinbase ----------
+let cbRetry = 1000;
+function connectCb() {
+  let ws; try { ws = new WebSocket(CB_WS); } catch (e) { return setTimeout(connectCb, cbRetry); }
+  ws.onopen = () => { cbRetry = 1000; const bk = S.books.cb; bk.bids.clear(); bk.asks.clear(); bk.ready = false;
+    ws.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker", "matches", "level2_batch"] })); };
+  ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } const f = S.feed.cb; f.ok = true; f.last = Date.now();
+    if (m.type === "ticker") { S.price = +m.price; S.bid = +m.best_bid; S.ask = +m.best_ask; }
+    else if (m.type === "match") onTrade("cb", m.side === "sell", +m.size, +m.price, m.taker_order_id); // side = maker side
+    else if (m.type === "snapshot") { const bk = S.books.cb; bk.bids.clear(); bk.asks.clear(); for (const [p, s] of m.bids) bk.bids.set(+p, +s); for (const [p, s] of m.asks) bk.asks.set(+p, +s); bk.ready = true; }
+    else if (m.type === "l2update") for (const [side, p, s] of m.changes) applyLevel("cb", side === "buy" ? "bid" : "ask", +p, +s);
+  };
+  ws.onclose = () => { S.feed.cb.ok = false; S.books.cb.ready = false; setTimeout(connectCb, cbRetry); cbRetry = Math.min(cbRetry * 2, 15000); };
+  ws.onerror = () => { try { ws.close(); } catch {} };
+}
+// ---------- Kraken v2 ----------
+let krRetry = 1000;
+function connectKr() {
+  let ws; try { ws = new WebSocket(KR_WS); } catch (e) { return setTimeout(connectKr, krRetry); }
+  ws.onopen = () => { krRetry = 1000; const bk = S.books.kr; bk.bids.clear(); bk.asks.clear(); bk.ready = false;
+    ws.send(JSON.stringify({ method: "subscribe", params: { channel: "book", symbol: ["BTC/USD"], depth: 1000 } }));
+    ws.send(JSON.stringify({ method: "subscribe", params: { channel: "trade", symbol: ["BTC/USD"] } })); };
+  ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } const f = S.feed.kr;
+    if (m.channel === "book") { f.ok = true; f.last = Date.now(); const d = m.data && m.data[0]; if (!d) return; const bk = S.books.kr;
+      if (m.type === "snapshot") { bk.bids.clear(); bk.asks.clear(); for (const l of d.bids) bk.bids.set(l.price, l.qty); for (const l of d.asks) bk.asks.set(l.price, l.qty); bk.ready = true; }
+      else { for (const l of d.bids || []) applyLevel("kr", "bid", l.price, l.qty); for (const l of d.asks || []) applyLevel("kr", "ask", l.price, l.qty); } }
+    else if (m.channel === "trade") { f.ok = true; f.last = Date.now(); for (const t of m.data || []) onTrade("kr", t.side === "buy", +t.qty, +t.price, t.timestamp + t.side); }
+    else if (m.channel === "heartbeat") { f.last = Date.now(); }
+  };
+  ws.onclose = () => { S.feed.kr.ok = false; S.books.kr.ready = false; setTimeout(connectKr, krRetry); krRetry = Math.min(krRetry * 2, 15000); };
+  ws.onerror = () => { try { ws.close(); } catch {} };
+}
+// ---------- candles (volatility, fallback target, chart backfill) ----------
+async function loadCandles() {
+  try { const r = await fetch(CB_REST + "/candles?granularity=60", { cache: "no-store" }); if (!r.ok) return;
+    const c = await r.json(); S.candles = c.map((x) => [x[0] * 1000, x[3], x[2], x[1], x[4]]).sort((a, b) => a[0] - b[0]); // [t,o,h,l,c]
+    const cl = S.candles.slice(-61).map((x) => x[4]); const rs = []; for (let i = 1; i < cl.length; i++) rs.push(Math.log(cl[i] / cl[i - 1]));
+    const mu = rs.reduce((a, b) => a + b, 0) / rs.length; S.sigma1m = Math.sqrt(rs.reduce((a, b) => a + (b - mu) ** 2, 0) / (rs.length - 1));
+    if (!S.price) S.price = cl[cl.length - 1];
+  } catch (e) {}
+}
+function priceAt(ms) { const s = Math.floor(ms / 1000);
+  if (S.hist.length && S.hist[0].s <= s) { for (let i = S.hist.length - 1; i >= 0; i--) if (S.hist[i].s <= s && S.hist[i].price) return S.hist[i].price; }
+  for (let i = S.candles.length - 1; i >= 0; i--) if (S.candles[i][0] <= ms) return S.candles[i][4]; return null; }
+
+// ---------- window + target ----------
+function windowNow(now) { const q = 900000; const open = Math.floor(now / q) * q; return { open, close: open + q }; }
+function autoTarget(open) {
+  // Kalshi's target = 60-second average of the index just before the window opens. Approximate with Coinbase.
+  const ps = S.hist.filter((b) => b.s * 1000 >= open - 60000 && b.s * 1000 < open && b.price).map((b) => b.price);
+  if (ps.length >= 30) return { v: ps.reduce((a, b) => a + b, 0) / ps.length, src: "Coinbase 60-s avg before open" };
+  const c = S.candles.find((x) => x[0] === open - 60000); if (c) return { v: (c[1] + c[2] + c[3] + c[4]) / 4, src: "Coinbase minute before open (approx.)" };
+  return null;
+}
+// ---------- Kalshi (optional, needs a proxy: Kalshi blocks browsers) ----------
+function kCandidates() { const c = []; if (cfg.proxy) c.push(cfg.proxy.replace(/\/$/, ""));
+  if (location.protocol.startsWith("http")) c.push(location.origin + "/kalshi");
+  else c.push("http://localhost:8787/kalshi");
+  return [...new Set(c)]; }
+async function kalshiLoop() {
+  try {
+    if (!S.k.base) { if (Date.now() < S.k.nextProbe) return; S.k.nextProbe = Date.now() + 60000;
+      for (const b of kCandidates()) { try { const ctl = new AbortController(); setTimeout(() => ctl.abort(), 3000);
+        const r = await fetch(b + "/series/" + SERIES, { signal: ctl.signal, cache: "no-store" }); if (r.ok || r.status === 429) { S.k.base = b; break; } } catch (e) {} }
+      if (!S.k.base) { S.k.ok = false; S.k.err = "off"; return; } }
+    const r = await fetch(`${S.k.base}/markets?series_ticker=${SERIES}&status=open&limit=20`, { cache: "no-store" });
+    if (r.status === 429) { S.k.err = "rate limited"; return; } if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json(); const now = Date.now();
+    const m = (d.markets || []).filter((x) => Date.parse(x.close_time) > now && Date.parse(x.open_time) <= now + 2000).sort((a, b) => Date.parse(a.close_time) - Date.parse(b.close_time))[0];
+    S.k.market = m || null; S.k.ok = true; S.k.err = ""; S.k.last = now;
+  } catch (e) { S.k.ok = false; S.k.err = "error"; S.k.base = null; }
+}
+
+// ---------- meters ----------
+function sumHist(n, f) { let a = 0; for (let i = Math.max(0, S.hist.length - n); i < S.hist.length; i++) a += f(S.hist[i]); return a; }
+function depth(pct) { const m = mid(); if (!m) return null; let b = 0, a = 0; const lo = m * (1 - pct), hi = m * (1 + pct);
+  for (const ex of ["cb", "kr"]) { const bk = S.books[ex]; if (!bk.ready) continue; for (const [p, s] of bk.bids) if (p >= lo) b += s; for (const [p, s] of bk.asks) if (p <= hi) a += s; }
+  return { b, a }; }
+function computeMeters() {
+  const R = {}; const sig = S.sigma1m || 0.0006; const sig1s = sig / Math.sqrt(60);
+  const d1 = depth(0.001), d5 = depth(0.005);
+  R.book = d1 && d5 && d1.a + d1.b > 0 ? 0.5 * imb(d1.b, d1.a) + 0.5 * imb(d5.b, d5.a) : 0;
+  R.bookDet = d5 ? `bids ${d5.b.toFixed(1)} · asks ${d5.a.toFixed(1)} BTC (±0.5%)` : "";
+  const ba = sumHist(30, (b) => b.bidAdd), bp = sumHist(30, (b) => b.bidPull || 0), aa = sumHist(30, (b) => b.askAdd), ap = sumHist(30, (b) => b.askPull || 0);
+  const tot = ba + bp + aa + ap; R.oflow = tot > 0 ? Math.tanh(4 * ((ba - bp) - (aa - ap)) / tot) : 0;
+  R.oflowDet = `bid +${ba.toFixed(1)}/−${bp.toFixed(1)} · ask +${aa.toFixed(1)}/−${ap.toFixed(1)}`;
+  const b10 = sumHist(10, (b) => b.buy), s10 = sumHist(10, (b) => b.sell), b60 = sumHist(60, (b) => b.buy), s60 = sumHist(60, (b) => b.sell);
+  R.taker = 0.4 * imb(b10, s10) + 0.6 * imb(b60, s60); R.takerDet = `60s buys ${b60.toFixed(2)} · sells ${s60.toFixed(2)}`;
+  const wb = sumHist(180, (b) => b.wBuy), ws_ = sumHist(180, (b) => b.wSell), wba = sumHist(180, (b) => b.wBidAdd), waa = sumHist(180, (b) => b.wAskAdd), wbp = sumHist(180, (b) => b.wBidPull), wap = sumHist(180, (b) => b.wAskPull);
+  const wbull = wb + 0.5 * (wba + wap), wbear = ws_ + 0.5 * (waa + wbp); R.whale = imb(wbull, wbear);
+  R.whaleDet = `3m whale buys ${wb.toFixed(1)} · sells ${ws_.toFixed(1)}`;
+  const p = S.price; const r = (sec) => { const q = priceAt(Date.now() - sec * 1000); return q && p ? Math.log(p / q) : 0; };
+  const r10 = r(10), r60 = r(60), r300 = r(300);
+  R.mom = Math.tanh((0.3 * r10 / (sig1s * Math.sqrt(10)) + 0.4 * r60 / (sig1s * Math.sqrt(60)) + 0.3 * r300 / (sig1s * Math.sqrt(300))) / 1.5);
+  R.momDet = `10s ${sgn(r10 * 1e4, 1)} · 1m ${sgn(r60 * 1e4, 1)} · 5m ${sgn(r300 * 1e4, 1)} bp`;
+  const ph = S.hist.slice(-300).map((b) => b.price).filter(Boolean); let path = 0; for (let i = 1; i < ph.length; i++) path += Math.abs(ph[i] - ph[i - 1]);
+  R.trend = ph.length > 20 && path > 0 ? clamp(2.5 * (ph[ph.length - 1] - ph[0]) / path, -1, 1) : Math.tanh(r300 / (sig * Math.sqrt(5)));
+  R.trendDet = ph.length > 20 ? `efficiency ${sgn(((ph[ph.length - 1] - ph[0]) / (path || 1)) * 100)}% over ${Math.round(ph.length / 60 * 10) / 10}m` : "warming up";
+  R.all = WEIGHTS.book * R.book + WEIGHTS.oflow * R.oflow + WEIGHTS.taker * R.taker + WEIGHTS.whale * R.whale + WEIGHTS.mom * R.mom + WEIGHTS.trend * R.trend;
+  const a = 0.35; for (const k of Object.keys(S.meters)) S.meters[k] = S.meters[k] * (1 - a) + 100 * (R[k] || 0) * a;
+  S.raw = R;
+}
+
+// ---------- gauges ----------
+const word = (s) => s >= 40 ? "Strong bull" : s >= 12 ? "Bullish" : s > -12 ? "Neutral" : s > -40 ? "Bearish" : "Strong bear";
+const gauges = {};
+function makeGauge(el, name, leftLab = "Bear", rightLab = "Bull") {
+  el.innerHTML = `${name ? `<div class="gname">${name}</div>` : ""}<svg viewBox="0 0 200 118"><defs><linearGradient id="g${el.id}" x1="0" x2="1"><stop offset="0" stop-color="#ef4444"/><stop offset=".5" stop-color="#3a4352"/><stop offset="1" stop-color="#22c55e"/></linearGradient></defs>
+    <path d="M 18 100 A 82 82 0 0 1 182 100" stroke="url(#g${el.id})" stroke-width="14" fill="none" stroke-linecap="round"/>
+    <text x="18" y="116" fill="#5d6878" font-size="10" text-anchor="middle">${leftLab}</text><text x="182" y="116" fill="#5d6878" font-size="10" text-anchor="middle">${rightLab}</text>
+    <g class="needle"><line x1="100" y1="100" x2="100" y2="30" stroke="#e8edf4" stroke-width="3.5" stroke-linecap="round"/></g><circle cx="100" cy="100" r="6" fill="#e8edf4"/></svg>
+    <div class="gval">--</div><div class="gword">—</div><div class="gdet"></div>`;
+  gauges[el.id] = { needle: el.querySelector(".needle"), val: el.querySelector(".gval"), word: el.querySelector(".gword"), det: el.querySelector(".gdet") };
+}
+function setGauge(id, v, w, det) { const g = gauges[id]; const x = clamp(v, -100, 100); g.needle.style.transform = `rotate(${x * 0.9}deg)`;
+  g.val.textContent = sgn(x); g.val.className = "gval " + (x > 12 ? "pos" : x < -12 ? "neg" : ""); g.word.textContent = w; if (det != null) g.det.textContent = det; }
+const METERS = [["book", "Order book pressure"], ["oflow", "Order flow (adds − cancels)"], ["taker", "Taker flow (filled)"], ["whale", "Whale activity"], ["mom", "Momentum 10s/1m/5m"], ["trend", "Trend strength"]];
+
+// ---------- entry ----------
+function entry(now) {
+  const w = windowNow(now); const tLeft = (w.close - now) / 60000;
+  const key = String(w.open); if (S.manualKey !== key) { if (S.manualKey) { $("mTarget").value = ""; $("mUp").value = ""; $("mDn").value = ""; } S.manualKey = key; }
+  const km = S.k.ok && S.k.market && Date.parse(S.k.market.close_time) === w.close ? S.k.market : null;
+  let target = null, src = "";
+  const mt = parseFloat($("mTarget").value);
+  if (isFinite(mt) && mt > 0) { target = mt; src = "your override"; }
+  else if (km && km.floor_strike) { target = +km.floor_strike; src = "Kalshi"; }
+  else { const a = autoTarget(w.open); if (a) { target = a.v; src = a.src; } }
+  let up = parseFloat($("mUp").value) / 100, dn = parseFloat($("mDn").value) / 100;
+  if (!isFinite(up) && km) up = +km.yes_ask_dollars; if (!isFinite(dn) && km) dn = +km.no_ask_dollars;
+  if (!(up > 0 && up < 1)) up = null; if (!(dn > 0 && dn < 1)) dn = null;
+  const E = { w, tLeft, target, src, up, dn, km };
+  const sig = S.sigma1m; if (!S.price || !target || !sig) return E;
+  const tEff = tLeft >= 1 ? tLeft - 2 / 3 : Math.max(tLeft ** 3 / 3, 0.0005);
+  E.z = Math.log(S.price / target) / (sig * Math.sqrt(tEff)); E.pv = phi(E.z);
+  const lean = S.meters.all / 100; E.pm = phi(E.z + 0.5 * lean); E.score = (2 * E.pm - 1) * 100;
+  const thr = cfg.thr / 100;
+  const maxPay = (p) => Math.max(0, p - thr - fee(p)); E.maxUp = maxPay(E.pm); E.maxDn = maxPay(1 - E.pm);
+  if (up != null) E.eu = E.pm - up - fee(up); if (dn != null) E.ed = 1 - E.pm - dn - fee(dn);
+  const okP = (p) => p == null || (p >= 0.05 && p <= 0.95);
+  let call = "WAIT", why = "", side = 0;
+  const all = S.meters.all;
+  if (tLeft < 1) why = "Final minute: settlement averages the last 60 s. Too late for a new entry.";
+  else if (E.pm >= 0.62 && E.pm <= 0.95 && all > -5) side = 1;
+  else if (E.pm <= 0.38 && E.pm >= 0.05 && all < 5) side = -1;
+  else if (E.pm > 0.95 || E.pm < 0.05) why = "Outcome looks mostly decided; Kalshi will price it at 95¢+, so there's little left to win.";
+  else if (Math.abs(E.pm - 0.5) >= 0.12) why = "Price is leaning one way but the order-flow meters disagree. Wait for them to line up.";
+  else why = "Too close to call: price is near the target relative to how much BTC moves in the time left.";
+  if (side) {
+    const price = side > 0 ? up : dn, edge = side > 0 ? E.eu : E.ed;
+    if (price != null && !okP(price)) { side = 0; why = "That side costs under 5¢ or over 95¢; edge there is model noise."; }
+    else if (edge != null && edge < thr) { why = `Direction says ${side > 0 ? "Up" : "Down"}, but Kalshi already prices it in: edge ${sgn(edge * 100, 1)} pts, need +${cfg.thr}.`; side = 0; }
+  }
+  if (side) { call = side > 0 ? "GO UP" : "GO DOWN"; const p = side > 0 ? E.pm : 1 - E.pm; const agree = Math.abs(all);
+    E.strength = p >= 0.78 && agree >= 25 ? "STRONG" : p >= 0.7 || agree >= 25 ? "MODERATE" : "WEAK";
+    why = `Model ${side > 0 ? "Up" : "Down"} ${(p * 100).toFixed(0)}% with order flow ${all >= 0 ? "bullish" : "bearish"} (${sgn(all)}). ` + ((side > 0 ? up : dn) != null ? `Edge ${sgn((side > 0 ? E.eu : E.ed) * 100, 1)} pts after fees.` : `Only if ${side > 0 ? "Up" : "Down"} costs ≤ ${Math.floor((side > 0 ? E.maxUp : E.maxDn) * 100)}¢ on Kalshi.`); }
+  E.call = call; E.why = why; E.side = side; return E;
+}
+
+// ---------- render ----------
+function render() {
+  const now = Date.now(); B(); confirmBigAdds(); computeMeters();
+  $("clock").textContent = new Date(now).toLocaleTimeString();
+  for (const ex of ["cb", "kr"]) { const f = S.feed[ex], age = (now - f.last) / 1000, D = ex === "cb" ? "Cb" : "Kr";
+    $("d" + D).className = "dot " + (f.ok && age < 5 ? "ok" : f.ok ? "mid" : "bad"); $("f" + D).textContent = f.ok ? (age < 5 ? "live" : "stale") : "connecting"; }
+  $("dK").className = "dot " + (S.k.ok ? "ok" : "mid"); $("fK").textContent = S.k.ok ? (S.k.market ? "live" : "waiting for market") : "auto (no proxy)";
+  // meters
+  for (const [k] of METERS) setGauge("m_" + k, S.meters[k], word(S.meters[k]), S.raw[k + "Det"]);
+  setGauge("gAll", S.meters.all, word(S.meters.all), "6 meters combined");
+  // entry
+  const E = entry(now); const left = Math.max(0, E.w.close - now);
+  $("count").textContent = String(Math.floor(left / 60000)).padStart(2, "0") + ":" + String(Math.floor(left / 1000) % 60).padStart(2, "0");
+  $("count").className = "count" + (left < 60000 ? " hot" : ""); $("winLabel").textContent = tstr(E.w.open) + " – " + tstr(E.w.close);
+  $("vTarget").innerHTML = E.target ? usd(E.target) + `<div class="sub" style="font-family:inherit">${E.src}</div>` : "—";
+  $("vSpot").textContent = usd(S.price);
+  if (E.target && S.price) { const g = S.price - E.target; $("vGap").innerHTML = `<span class="${g >= 0 ? "pos" : "neg"}">${g >= 0 ? "+" : "−"}${usd(Math.abs(g))}</span>`; }
+  $("vPm").textContent = E.pm != null ? (E.pm * 100).toFixed(1) + "%" : "—";
+  $("vMax").textContent = E.pm != null ? `Up ${Math.floor(E.maxUp * 100)}¢ · Down ${Math.floor(E.maxDn * 100)}¢` : "—";
+  $("vK").textContent = E.up != null || E.dn != null ? `${E.up != null ? (E.up * 100).toFixed(0) + "¢" : "—"} / ${E.dn != null ? (E.dn * 100).toFixed(0) + "¢" : "—"}` : "type them in";
+  $("vEdge").innerHTML = E.eu != null || E.ed != null ? [E.eu, E.ed].map((e) => e == null ? "—" : `<span class="${e > 0 ? "pos" : "neg"}">${sgn(e * 100, 1)}</span>`).join(" / ") + " pts" : "—";
+  if (E.score != null) setGauge("gEntry", E.score, E.score > 0 ? `Up ${(E.pm * 100).toFixed(0)}%` : `Down ${((1 - E.pm) * 100).toFixed(0)}%`, "");
+  const c = $("call"); c.textContent = E.call || "WAIT"; c.className = "callword " + (E.side > 0 ? "up" : E.side < 0 ? "down" : "wait");
+  $("strength").textContent = E.side ? E.strength + " signal" : ""; $("strength").className = "strength " + (E.side > 0 ? "pos" : E.side < 0 ? "neg" : "");
+  $("why").textContent = E.why || (S.price ? "Waiting for target and volatility…" : "Connecting to live order books…");
+  renderFlowTable(); renderPrice(E, now); renderFlowChart(); renderTape(now);
+}
+function renderFlowTable() {
+  const rows = [["Bids added", "bidAdd"], ["Bids pulled", "bidPull"], ["Asks added", "askAdd"], ["Asks pulled", "askPull"], ["Taker buys", "buy"], ["Taker sells", "sell"]];
+  const f = (n, k) => sumHist(n, (b) => b[k] || 0);
+  let h = rows.map(([l, k]) => `<tr><td>${l}</td><td>${f(1, k).toFixed(2)}</td><td>${f(10, k).toFixed(2)}</td><td>${f(60, k).toFixed(1)}</td></tr>`).join("");
+  const net = (n) => (f(n, "bidAdd") - f(n, "bidPull")) - (f(n, "askAdd") - f(n, "askPull"));
+  h += `<tr><td><b>Net book delta</b></td>${[1, 10, 60].map((n) => { const v = net(n); return `<td class="${v >= 0 ? "pos" : "neg"}">${sgn(v, n === 60 ? 1 : 2)}</td>`; }).join("")}</tr>`;
+  const tn = (n) => f(n, "buy") - f(n, "sell");
+  h += `<tr><td><b>Net taker</b></td>${[1, 10, 60].map((n) => { const v = tn(n); return `<td class="${v >= 0 ? "pos" : "neg"}">${sgn(v, 2)}</td>`; }).join("")}</tr>`;
+  $("tFlow").tBodies[0].innerHTML = h;
+}
+function renderPrice(E, now) {
+  const svg = $("cPrice"); const x0 = E.w.open, x1 = E.w.close;
+  let pts = S.hist.filter((b) => b.s * 1000 >= x0 && b.price).map((b) => [b.s * 1000, b.price]);
+  const pre = S.candles.filter((c) => c[0] >= x0 && (!pts.length || c[0] + 60000 <= pts[0][0])).map((c) => [c[0] + 60000, c[4]]);
+  pts = pre.concat(pts); if (S.price) pts.push([now, S.price]);
+  if (pts.length < 2 || !E.target) { svg.innerHTML = ""; return; }
+  let lo = Math.min(E.target, ...pts.map((p) => p[1])), hi = Math.max(E.target, ...pts.map((p) => p[1])); const pad = Math.max((hi - lo) * 0.12, 4); lo -= pad; hi += pad;
+  const X = (t) => 4 + (clamp(t, x0, x1) - x0) / (x1 - x0) * 592, Y = (v) => 165 - (v - lo) / (hi - lo) * 160;
+  const col = S.price >= E.target ? "#22c55e" : "#ef4444";
+  svg.innerHTML = `<rect x="${X(now)}" y="0" width="${Math.max(0, 596 - X(now))}" height="170" fill="#fff" fill-opacity=".03"/>
+    <line x1="4" x2="596" y1="${Y(E.target)}" y2="${Y(E.target)}" stroke="#8a96a8" stroke-dasharray="6 5" vector-effect="non-scaling-stroke"/>
+    <polyline points="${pts.map((p) => X(p[0]).toFixed(1) + "," + Y(p[1]).toFixed(1)).join(" ")}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`;
+  $("priceRange").textContent = `${usd(lo + pad, 0)} – ${usd(hi - pad, 0)} · ${tstr(x0)} – ${tstr(x1)}`;
+}
+function renderFlowChart() {
+  const svg = $("cFlow"); const h = S.hist.slice(-300); if (!h.length) return;
+  const tk = h.map((b) => b.buy - b.sell), bk = h.map((b) => (b.bidAdd - (b.bidPull || 0)) - (b.askAdd - (b.askPull || 0)));
+  const mt = Math.max(0.05, ...tk.map(Math.abs)), mb = Math.max(0.05, ...bk.map(Math.abs)); const w = 600 / 300;
+  let s = `<line x1="0" x2="600" y1="50" y2="50" stroke="#242d3a"/><line x1="0" x2="600" y1="150" y2="150" stroke="#242d3a"/><line x1="0" x2="600" y1="100" y2="100" stroke="#5d6878" stroke-opacity=".4"/>`;
+  const off = 300 - h.length;
+  h.forEach((b, i) => { const x = (off + i) * w; const v = tk[i] / mt * 46, u = bk[i] / mb * 46;
+    if (v) s += `<rect x="${x}" y="${v > 0 ? 50 - v : 50}" width="${w * 0.8}" height="${Math.abs(v)}" fill="${v > 0 ? "#22c55e" : "#ef4444"}"/>`;
+    if (u) s += `<rect x="${x}" y="${u > 0 ? 150 - u : 150}" width="${w * 0.8}" height="${Math.abs(u)}" fill="${u > 0 ? "#22c55e" : "#ef4444"}" fill-opacity=".75"/>`; });
+  svg.innerHTML = s; $("flowScale").textContent = `scale: taker ±${mt.toFixed(2)} BTC/s · book ±${mb.toFixed(1)} BTC/s`;
+}
+let lastTape = -1;
+function renderTape(now) { const n = S.whales.length ? S.whales[0].t : 0; if (n === lastTape) return; lastTape = n; if (!S.whales.length) return;
+  $("tape").innerHTML = S.whales.slice(0, 25).map((e) => { const bull = (e.kind === "trade" && e.side === "buy") || (e.kind === "add" && e.side === "bid") || (e.kind === "pull" && e.side === "ask");
+    const what = e.kind === "trade" ? `Taker ${e.side.toUpperCase()}` : `${e.side === "bid" ? "Bid" : "Ask"} ${e.kind === "add" ? "added" : "pulled"}`;
+    return `<div><span>${tstr(e.t, true)} <span class="tag">${e.ex === "cb" ? "CB" : "KR"}</span></span><span class="${bull ? "pos" : "neg"}">${what} ${e.size.toFixed(2)}</span><span>${usd(e.price, 0)}</span></div>`; }).join(""); }
+
+// ---------- boot ----------
+function init() {
+  makeGauge($("gEntry"), "", "Down", "Up"); makeGauge($("gAll"), "");
+  $("meters").innerHTML = METERS.map(([k]) => `<div class="meter gwrap" id="m_${k}"></div>`).join("");
+  for (const [k, n] of METERS) makeGauge($("m_" + k), n);
+  $("sWT").value = cfg.wt; $("sWO").value = cfg.wo; $("sThr").value = cfg.thr; $("sProxy").value = cfg.proxy;
+  $("sSave").onclick = () => { cfg.wt = +$("sWT").value || 1; cfg.wo = +$("sWO").value || 10; cfg.thr = +$("sThr").value || 5; cfg.proxy = $("sProxy").value.trim();
+    localStorage.setItem("wt", cfg.wt); localStorage.setItem("wo", cfg.wo); localStorage.setItem("thr", cfg.thr); localStorage.setItem("kalshiProxy", cfg.proxy); S.k.base = null; S.k.nextProbe = 0; kalshiLoop(); };
+  connectCb(); connectKr(); loadCandles(); kalshiLoop();
+  setInterval(render, 1000); setInterval(loadCandles, 60000); setInterval(kalshiLoop, 5000);
+  setInterval(() => { const cut = Date.now() - 120000; for (const [k, a] of S.agg) if (a.t < cut) S.agg.delete(k); }, 30000);
+}
+init();
+</script>
+</body>
+</html>
