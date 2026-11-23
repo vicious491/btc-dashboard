@@ -32,7 +32,8 @@ h1{font-size:17px;margin:0;font-weight:700}
 .pos{color:var(--bull)}.neg{color:var(--bear)}
 .gwrap{text-align:center}
 .gwrap svg{width:100%;max-width:230px;height:auto;display:block;margin:0 auto}
-#gAll svg,#gEntry svg{max-width:300px}
+#gAll svg,#gEntry svg,#gScalp svg{max-width:300px}
+.callword.watch{color:var(--warn)}.scalpBox{border:1px solid var(--line);background:var(--card2);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:13px}
 .needle{transition:transform .9s cubic-bezier(.2,.8,.2,1);transform-origin:100px 100px}
 .gname{font-size:12px;font-weight:650;color:var(--text);margin-bottom:2px;text-align:left}
 .gval{font:700 20px/1 var(--mono)}
@@ -106,6 +107,42 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
     </div>
   </div>
 
+  <!-- SCALP -->
+  <div class="card span3" id="scalpCard">
+    <h2>Scalp meter (cheap side bounce, 1–2 min hold)</h2>
+    <div class="entryTop">
+      <div>
+        <div class="callword wait" id="scCall">WAIT</div>
+        <div class="strength" id="scStrength"></div>
+      </div>
+      <div><div class="count" id="scCount">--</div><div class="sub" id="scCountLab" style="text-align:right">hold timer</div></div>
+    </div>
+    <div class="why" id="scWhy">Waiting for live data…</div>
+    <div class="scalpBox" id="scActive" style="display:none"></div>
+    <div class="entryGrid">
+      <div class="gwrap" id="gScalp"></div>
+      <div>
+        <div class="kv" style="margin-top:0">
+          <div>Up / Down now</div><div id="scVals">—</div>
+          <div>Cheap side</div><div id="scCheap">—</div>
+          <div>Buy at or below</div><div id="scBuy">—</div>
+          <div>Sell target</div><div id="scSell">—</div>
+          <div>BTC move to hit target</div><div id="scMove">—</div>
+          <div>Window time left</div><div id="scLeft">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="sub" style="margin-top:8px">Values come from the price model unless you type the live Kalshi Up/Down price in the boxes above. The model can be a few cents off at these extremes, so check Kalshi before you tap buy.</div>
+    <details style="margin-top:10px" id="scBt"><summary>Backtest: does a 2¢ side bounce?</summary>
+      <div class="sub" style="margin-top:6px;line-height:1.5" id="scBtText"><b>Short answer: in the data, buying a 2¢ side and selling at 7¢ lost money on average.</b> Your $1 → $5.48 trade is the kind of win that happens, but not often enough to pay for the misses.<br><br>
+<b>Second-by-second Kalshi trades</b> (28 recent windows, Nov 22–23, 347k trades): a side trading at 2¢ or less got back to 7¢ within 60 s in <b>9%</b> of 57 tries. Average <b class="neg">−56¢ per $1</b> after fees; the typical miss loses almost the whole $1.<br>
+With <b>5+ minutes left and a 2-minute hold</b> it was much less bad: <b>21%</b> hit, <b>−7¢ per $1</b> (only 14 tries). That's why the defaults here are 5 min left and a 120 s hold, not 2 min and 60 s.<br><br>
+<b>Minute candles</b> (450 windows, Nov 18–23): a side at 2¢ or less reached a 7¢ bid within the next minute 6% of the time, within 3 minutes 10% (300–435 tries). Average −32¢ to −66¢ per $1 depending on fill price. With 5–6 minutes left the hit rate was best (about 11%).<br><br>
+<b>Break-even:</b> a 2¢ → 7¢ win makes about +$2.20 per $1 after fees, and a miss loses about $0.90, so you need roughly <b>30% wins</b>. Every threshold tried (1–5¢ in, 3–10¢ out, 30 s–3 min holds) came in below that.<br><br>
+Fees assumed: Kalshi taker fee 0.07 × contracts × p × (1−p), rounded up to the cent, on the buy and on the sell (about 7¢ in and 23¢ out per $1 at 2¢ → 7¢). The live order-flow filter can't be backtested (no second-level BTC order book history), and a Kalshi-tape "already bouncing" filter didn't help. Treat SCALP calls as small, lottery-sized bets.</div>
+    </details>
+  </div>
+
   <!-- OVERALL -->
   <div class="card">
     <h2>Overall bull / bear</h2>
@@ -162,6 +199,10 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
       <div><label>Whale order ≥ BTC</label><input id="sWO" inputmode="decimal"></div>
       <div><label>Edge needed (pts)</label><input id="sThr" inputmode="decimal"></div>
       <div><label>Kalshi proxy (optional)</label><input id="sProxy" placeholder="none"></div>
+      <div><label>Scalp: buy at ≤ ¢</label><input id="sScBuy" inputmode="decimal"></div>
+      <div><label>Scalp: sell target ¢</label><input id="sScSell" inputmode="decimal"></div>
+      <div><label>Scalp: min time left (min)</label><input id="sScMin" inputmode="decimal"></div>
+      <div><label>Scalp: hold time (s)</label><input id="sScHold" inputmode="decimal"></div>
     </div>
     <div style="margin-top:8px"><button id="sSave">Save</button></div>
     <details style="margin-top:10px"><summary>How the meters work</summary>
@@ -184,8 +225,11 @@ const KR_WS = "wss://ws.kraken.com/v2";
 const SERIES = "KXBTC15M";
 const BAND = 0.0025;
 const REST_MS = 10000; // a big quote must rest this long to count as a whale order // book changes counted within ±0.25% of price
+const SC_DEF = { buy: 2, sell: 7, min: 5, hold: 120 }; // scalp defaults (¢, ¢, minutes, seconds)
+const SC_FLOW = 20; // short-term flow toward the cheap side needed to fire
 const WEIGHTS = { book: 0.15, oflow: 0.20, taker: 0.25, whale: 0.10, mom: 0.20, trend: 0.10 };
-const cfg = { wt: +(localStorage.getItem("wt") || 1), wo: +(localStorage.getItem("wo") || 10), thr: +(localStorage.getItem("thr") || 5), proxy: localStorage.getItem("kalshiProxy") || "", late: false };
+const cfg = { wt: +(localStorage.getItem("wt") || 1), wo: +(localStorage.getItem("wo") || 10), thr: +(localStorage.getItem("thr") || 5), proxy: localStorage.getItem("kalshiProxy") || "", late: false,
+  scBuy: +(localStorage.getItem("scBuy") || SC_DEF.buy), scSell: +(localStorage.getItem("scSell") || SC_DEF.sell), scMin: +(localStorage.getItem("scMin") || SC_DEF.min), scHold: +(localStorage.getItem("scHold") || SC_DEF.hold) };
 // debug: ?now=2026-11-23T13:04:00-08:00 shifts the clock for the entry rules
 const NOW_OFF = (() => { const q = new URLSearchParams(location.search).get("now"); const t = q ? Date.parse(q) : NaN; return isFinite(t) ? t - Date.now() : 0; })();
 const nowMs = () => Date.now() + NOW_OFF;
@@ -204,7 +248,8 @@ const S = {
   whales: [],
   agg: new Map(),  // taker order aggregation for whale detection
   bigAdds: new Map(), bigSince: new Map(),
-  meters: { book: 0, oflow: 0, taker: 0, whale: 0, mom: 0, trend: 0, all: 0 },
+  meters: { book: 0, oflow: 0, taker: 0, whale: 0, mom: 0, trend: 0, all: 0, scalp: 0 },
+  sc: null,        // active scalp
   raw: {},
   k: { base: null, ok: false, market: null, last: 0, err: "", nextProbe: 0 },
   manualKey: null,
@@ -361,6 +406,10 @@ function computeMeters() {
   const ph = S.hist.slice(-300).map((b) => b.price).filter(Boolean); let path = 0; for (let i = 1; i < ph.length; i++) path += Math.abs(ph[i] - ph[i - 1]);
   R.trend = ph.length > 20 && path > 0 ? clamp(2.5 * (ph[ph.length - 1] - ph[0]) / path, -1, 1) : Math.tanh(r300 / (sig * Math.sqrt(5)));
   R.trendDet = ph.length > 20 ? `efficiency ${sgn(((ph[ph.length - 1] - ph[0]) / (path || 1)) * 100)}% over ${Math.round(ph.length / 60 * 10) / 10}m` : "warming up";
+  // short-term flow for the scalp meter: 10/30 s taker flow, tight book, 10/30 s momentum
+  const b30 = sumHist(30, (b) => b.buy), s30 = sumHist(30, (b) => b.sell), r30 = r(30), bk1 = d1 && d1.a + d1.b > 0 ? imb(d1.b, d1.a) : 0;
+  R.scalp = 0.30 * imb(b10, s10) + 0.20 * imb(b30, s30) + 0.20 * bk1 + 0.15 * Math.tanh(r10 / (sig1s * Math.sqrt(10))) + 0.15 * Math.tanh(r30 / (sig1s * Math.sqrt(30)));
+  R.scalpDet = `10s taker ${sgn(imb(b10, s10) * 100)} · book ${sgn(bk1 * 100)} · 30s ${sgn(r30 * 1e4, 1)} bp`;
   R.all = WEIGHTS.book * R.book + WEIGHTS.oflow * R.oflow + WEIGHTS.taker * R.taker + WEIGHTS.whale * R.whale + WEIGHTS.mom * R.mom + WEIGHTS.trend * R.trend;
   const a = 0.35; for (const k of Object.keys(S.meters)) S.meters[k] = S.meters[k] * (1 - a) + 100 * (R[k] || 0) * a;
   S.raw = R;
@@ -399,7 +448,7 @@ function entry(now) {
   if (cfg.late && tLeft >= 1 && E.elapsed < 12) E.lateWait = w.open + 12 * 60000 - now;
   const sig = S.sigma1m; if (!S.price || !target || !sig) return E;
   const tEff = tLeft >= 1 ? tLeft - 2 / 3 : Math.max(tLeft ** 3 / 3, 0.0005);
-  E.z = Math.log(S.price / target) / (sig * Math.sqrt(tEff)); E.pv = phi(E.z);
+  E.tEff = tEff; E.sig = sig; E.z = Math.log(S.price / target) / (sig * Math.sqrt(tEff)); E.pv = phi(E.z);
   const lean = S.meters.all / 100; E.pm = phi(E.z + 0.5 * lean); E.score = (2 * E.pm - 1) * 100;
   const thr = cfg.thr / 100;
   const maxPay = (p) => Math.max(0, p - thr - fee(p)); E.maxUp = maxPay(E.pm); E.maxDn = maxPay(1 - E.pm);
@@ -435,6 +484,44 @@ function entry(now) {
   E.call = call; E.why = why; E.side = side; return E;
 }
 
+// ---------- scalp ----------
+function invPhi(p) { let lo = -9, hi = 9; for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (phi(m) < p) lo = m; else hi = m; } return (lo + hi) / 2; }
+function sideVal(E, side) { const k = side > 0 ? E.up : E.dn; return k != null ? k : side > 0 ? E.pv : 1 - E.pv; }
+// spot price at which the model values `side` at v (with the current time left)
+function spotFor(E, side, v) { const pu = side > 0 ? v : 1 - v; return E.target * Math.exp(invPhi(clamp(pu, 1e-6, 1 - 1e-6)) * E.sig * Math.sqrt(E.tEff)); }
+function scalp(now, E) {
+  const C = { side: 0, call: "WAIT", why: "", state: "wait" }; const buy = cfg.scBuy / 100, sell = cfg.scSell / 100;
+  const tLeft = (E.w.close - now) / 60000; C.tLeft = tLeft; C.flow = S.meters.scalp;
+  if (E.pv == null || !E.tEff) { C.why = S.price ? "Waiting for target and volatility…" : "Connecting to live order books…"; return C; }
+  const upV = sideVal(E, 1), dnV = sideVal(E, -1); C.upV = upV; C.dnV = dnV;
+  const cheap = upV <= dnV ? 1 : -1, cv = cheap > 0 ? upV : dnV, name = cheap > 0 ? "Up" : "Down"; C.cheap = cheap; C.cv = cv;
+  C.toward = cheap * C.flow;
+  // an active scalp runs until the hold timer ends (or the window closes)
+  let A = S.sc; if (A && (A.wopen !== E.w.open || now - A.t0 > (cfg.scHold + 30) * 1000)) A = S.sc = null;
+  if (A) {
+    const nm = A.side > 0 ? "Up" : "Down"; const model = A.side > 0 ? E.pv : 1 - E.pv;
+    const manual = A.side > 0 ? E.up : E.dn;
+    // if you typed the Kalshi price at entry and haven't updated it, scale the model by the gap seen at entry
+    const est = manual != null && manual !== A.entry ? manual : A.cal ? clamp(model * A.cal, 0, 1) : model;
+    const sp = spotFor(E, A.side, clamp(sell / (A.cal || 1), 1e-6, 0.999));
+    Object.assign(C, { side: A.side, active: true, est, nm, holdLeft: A.t0 + cfg.scHold * 1000 - now, move: sp - S.price, entry: A.entry });
+    if (est >= sell) { C.call = "SELL " + nm.toUpperCase(); C.state = "sell"; C.why = `${nm} is around ${(est * 100).toFixed(1)}¢, at or above your ${cfg.scSell}¢ target. Take the profit.`; }
+    else if (C.holdLeft <= 0) { C.call = "EXIT " + nm.toUpperCase(); C.state = "exit"; C.why = `Hold time is up and ${nm} is about ${(est * 100).toFixed(1)}¢. Sell now or accept the risk it goes to 0¢ at expiry.`; }
+    else if (tLeft < 1) { C.call = "EXIT " + nm.toUpperCase(); C.state = "exit"; C.why = "Final minute: settlement is averaging. Cheap sides almost always expire at 0¢."; }
+    else { C.call = "HOLD " + nm.toUpperCase(); C.state = "hold"; C.why = `Scalp ${nm} from about ${(A.entry * 100).toFixed(1)}¢. Sell at ${cfg.scSell}¢ (set a limit sell on Kalshi), or exit when the timer ends.`; }
+    return C;
+  }
+  if (cv > 0.05) { C.why = `No cheap side: Up ${(upV * 100).toFixed(0)}¢ / Down ${(dnV * 100).toFixed(0)}¢. A scalp needs one side at 5¢ or less.`; return C; }
+  if (tLeft < cfg.scMin) { C.why = `${name} is cheap (${(cv * 100).toFixed(1)}¢), but only ${mmss(tLeft * 60000)} left. Under ${cfg.scMin} min a cheap side rarely bounces before it expires at 0¢.`; return C; }
+  if (cv > buy) { C.state = "watch"; C.call = "WATCH"; C.why = `${name} is ${(cv * 100).toFixed(1)}¢. Buy zone is ${cfg.scBuy}¢ or less. Flow toward ${name}: ${sgn(C.toward)} (needs +${SC_FLOW}).`; return C; }
+  if (cv < 0.004) { C.state = "watch"; C.call = "WATCH"; C.why = `${name} is about ${(cv * 100).toFixed(2)}¢ on the model: BTC is too far from the target for a quick bounce.`; return C; }
+  if (C.toward < SC_FLOW) { C.state = "watch"; C.call = "WATCH"; C.why = `${name} is in the buy zone (${(cv * 100).toFixed(1)}¢) but short-term flow isn't turning its way yet (${sgn(C.toward)}, needs +${SC_FLOW}).`; return C; }
+  // fire: start a scalp
+  const model = cheap > 0 ? E.pv : 1 - E.pv; const kp = cheap > 0 ? E.up : E.dn;
+  S.sc = { side: cheap, t0: now, wopen: E.w.open, entry: cv, cal: kp != null && model > 0 ? kp / model : null };
+  return scalp(now, E);
+}
+
 // ---------- render ----------
 function render() {
   const now = Date.now(); B(); confirmBigAdds(); computeMeters();
@@ -462,7 +549,27 @@ function render() {
   $("aftBanner").style.display = E.aft ? "" : "none";
   $("earlyNote").style.display = !cfg.late && E.elapsed != null && E.elapsed >= 1 && E.elapsed < 6 ? "" : "none"; $("strength").className = "strength " + (E.side > 0 ? "pos" : E.side < 0 ? "neg" : "");
   $("why").textContent = E.why || (S.price ? "Waiting for target and volatility…" : "Connecting to live order books…");
+  renderScalp(scalp(tnow, E), E);
   renderFlowTable(); renderPrice(E, now); renderFlowChart(); renderTape(now);
+}
+function renderScalp(C, E) {
+  const nm = (s) => s > 0 ? "Up" : "Down"; const c = $("scCall"); c.textContent = C.call;
+  const ch = C.active ? C.side : C.cv != null && C.cv <= 0.05 ? C.cheap : 0;
+  c.className = "callword " + (C.state === "hold" || C.state === "sell" ? (C.side > 0 ? "up" : "down") : C.state === "exit" || C.state === "watch" ? "watch" : "wait");
+  $("scStrength").textContent = C.active ? (C.state === "hold" ? `SCALP ${nm(C.side).toUpperCase()} · entered ~${(C.entry * 100).toFixed(1)}¢` : "") : ch ? `Flow toward ${nm(ch)} ${sgn(ch * C.flow)}` : "";
+  $("scWhy").textContent = C.why;
+  const hl = C.active ? Math.max(0, C.holdLeft) : null;
+  $("scCount").textContent = hl != null ? mmss(hl) : "--"; $("scCount").className = "count" + (hl != null && hl < 15000 ? " hot" : "");
+  const box = $("scActive");
+  if (C.active) { box.style.display = ""; box.innerHTML = `<b>Sell target ${cfg.scSell}¢</b> · value now ≈ <b>${(C.est * 100).toFixed(1)}¢</b> · ${C.move != null && isFinite(C.move) ? `BTC needs <b class="${C.move >= 0 ? "pos" : "neg"}">${C.move >= 0 ? "+" : "−"}${usd(Math.abs(C.move), 0)}</b> (to ${usd(S.price + C.move, 0)})` : ""} · ${hl > 0 ? mmss(hl) + " left to hold" : "hold time up"}`; }
+  else box.style.display = "none";
+  if (C.flow != null) setGauge("gScalp", C.flow, ch ? (ch * C.flow >= 0 ? `Turning toward ${nm(ch)}` : `Moving away from ${nm(ch)}`) : "Short-term flow " + word(C.flow).toLowerCase(), S.raw.scalpDet);
+  $("scVals").textContent = C.upV != null ? `${(C.upV * 100).toFixed(1)}¢ / ${(C.dnV * 100).toFixed(1)}¢` + (E.up != null && E.dn != null ? " (Kalshi)" : E.up != null ? " (Up: Kalshi)" : E.dn != null ? " (Down: Kalshi)" : " (model)") : "—";
+  $("scCheap").innerHTML = C.cv != null && C.cv <= 0.05 ? `<span class="${C.cheap > 0 ? "pos" : "neg"}">${nm(C.cheap)}</span>` : "none";
+  $("scBuy").textContent = cfg.scBuy + "¢"; $("scSell").textContent = cfg.scSell + "¢";
+  let mv = C.move; if (!C.active && C.cv != null && C.cv <= 0.05 && E.tEff) { mv = spotFor(E, C.cheap, cfg.scSell / 100) - S.price; }
+  $("scMove").innerHTML = mv != null && isFinite(mv) && (C.active || (C.cv != null && C.cv <= 0.05)) ? `<span class="${mv >= 0 ? "pos" : "neg"}">${mv >= 0 ? "+" : "−"}${usd(Math.abs(mv), 0)}</span>` : "—";
+  $("scLeft").textContent = mmss(C.tLeft * 60000) + (C.tLeft < cfg.scMin ? " (too late)" : "");
 }
 function renderFlowTable() {
   const rows = [["Bids added", "bidAdd"], ["Bids pulled", "bidPull"], ["Asks added", "askAdd"], ["Asks pulled", "askPull"], ["Taker buys", "buy"], ["Taker sells", "sell"]];
@@ -507,11 +614,14 @@ function renderTape(now) { const n = S.whales.length ? S.whales[0].t : 0; if (n 
 
 // ---------- boot ----------
 function init() {
-  makeGauge($("gEntry"), "", "Down", "Up"); makeGauge($("gAll"), "");
+  makeGauge($("gEntry"), "", "Down", "Up"); makeGauge($("gAll"), ""); makeGauge($("gScalp"), "", "Down", "Up");
   $("meters").innerHTML = METERS.map(([k]) => `<div class="meter gwrap" id="m_${k}"></div>`).join("");
   for (const [k, n] of METERS) makeGauge($("m_" + k), n);
   $("sWT").value = cfg.wt; $("sWO").value = cfg.wo; $("sThr").value = cfg.thr; $("sProxy").value = cfg.proxy;
+  $("sScBuy").value = cfg.scBuy; $("sScSell").value = cfg.scSell; $("sScMin").value = cfg.scMin; $("sScHold").value = cfg.scHold;
   $("sSave").onclick = () => { cfg.wt = +$("sWT").value || 1; cfg.wo = +$("sWO").value || 10; cfg.thr = +$("sThr").value || 5; cfg.proxy = $("sProxy").value.trim();
+    cfg.scBuy = +$("sScBuy").value || SC_DEF.buy; cfg.scSell = +$("sScSell").value || SC_DEF.sell; cfg.scMin = +$("sScMin").value >= 0 && $("sScMin").value !== "" ? +$("sScMin").value : SC_DEF.min; cfg.scHold = +$("sScHold").value || SC_DEF.hold;
+    for (const k of ["scBuy", "scSell", "scMin", "scHold"]) localStorage.setItem(k, cfg[k]); S.sc = null;
     localStorage.setItem("wt", cfg.wt); localStorage.setItem("wo", cfg.wo); localStorage.setItem("thr", cfg.thr); localStorage.setItem("kalshiProxy", cfg.proxy); S.k.base = null; S.k.nextProbe = 0; kalshiLoop(); };
   connectCb(); connectKr(); loadCandles(); kalshiLoop();
   setInterval(render, 1000); setInterval(loadCandles, 60000); setInterval(kalshiLoop, 5000);
