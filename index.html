@@ -55,6 +55,8 @@ button{background:var(--card2);color:var(--text);border:1px solid var(--line);bo
 .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .note{font-size:11.5px;color:var(--dim);margin-top:14px}
 details summary{cursor:pointer;color:var(--muted);font-size:13px}
+.banner{border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.09);color:#f5d19b;border-radius:10px;padding:8px 10px;font-size:13px;margin:8px 0 2px}
+.note2{font-size:12px;color:#f5d19b;margin-top:6px}
 .tag{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--card2);color:var(--muted);border:1px solid var(--line)}
 </style>
 </head>
@@ -80,7 +82,9 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
       </div>
       <div><div class="count" id="count">--:--</div><div class="sub" id="winLabel" style="text-align:right"></div></div>
     </div>
+    <div class="banner" id="aftBanner" style="display:none">Afternoon (12–6 PM PT): early favorites lost about 31¢ per $1 in the backtest. GO is blocked before minute 10.</div>
     <div class="why" id="why">Connecting to live order books…</div>
+    <div class="note2" id="earlyNote" style="display:none">Minutes 2–6: buying the early favorite lost 7–10¢ per $1 in the 450-window backtest.</div>
     <div class="entryGrid">
       <div class="gwrap" id="gEntry"></div>
       <div>
@@ -138,12 +142,27 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
   </div>
 
   <div class="card span3">
+    <details id="btPanel"><summary style="font-size:13px;color:var(--text);font-weight:650">Backtest (450 windows, Nov 18–23)</summary>
+      <table style="margin-top:8px"><thead><tr><th>Entry minute</th><th>Favorite won</th><th>Avg price</th><th>P&amp;L per $1</th></tr></thead><tbody>
+        <tr><td>2</td><td>61.1%</td><td>65.1¢</td><td class="neg">−0.091</td></tr>
+        <tr><td>4</td><td>64.4%</td><td>70.3¢</td><td class="neg">−0.104</td></tr>
+        <tr><td>8</td><td>79.1%</td><td>78.1¢</td><td>−0.000</td></tr>
+        <tr><td>10</td><td>79.6%</td><td>82.5¢</td><td class="neg">−0.059</td></tr>
+        <tr><td>12</td><td>87.6%</td><td>87.4¢</td><td>−0.008</td></tr>
+        <tr><td>14</td><td>94.7%</td><td>94.6¢</td><td>−0.002</td></tr>
+      </tbody></table>
+      <div class="sub" style="margin-top:8px">Kalshi KXBTC15M, buying the favorite at the ask, after fees. No entry rule beat zero after fees; late entries (minute 12+, 85–95¢) were about breakeven. Afternoon early favorites lost about 31¢ per $1.</div>
+    </details>
+  </div>
+
+  <div class="card span3">
     <h2>Settings</h2>
     <div class="inputs" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
       <div><label>Whale trade ≥ BTC</label><input id="sWT" inputmode="decimal"></div>
       <div><label>Whale order ≥ BTC</label><input id="sWO" inputmode="decimal"></div>
       <div><label>Edge needed (pts)</label><input id="sThr" inputmode="decimal"></div>
       <div><label>Kalshi proxy (optional)</label><input id="sProxy" placeholder="none"></div>
+      <div><label>Late-entry mode</label><label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text);margin-top:8px"><input type="checkbox" id="sLate" style="width:20px;height:20px"> GO only from minute 12</label></div>
     </div>
     <div style="margin-top:8px"><button id="sSave">Save</button></div>
     <details style="margin-top:10px"><summary>How the meters work</summary>
@@ -167,7 +186,12 @@ const SERIES = "KXBTC15M";
 const BAND = 0.0025;
 const REST_MS = 10000; // a big quote must rest this long to count as a whale order // book changes counted within ±0.25% of price
 const WEIGHTS = { book: 0.15, oflow: 0.20, taker: 0.25, whale: 0.10, mom: 0.20, trend: 0.10 };
-const cfg = { wt: +(localStorage.getItem("wt") || 1), wo: +(localStorage.getItem("wo") || 10), thr: +(localStorage.getItem("thr") || 5), proxy: localStorage.getItem("kalshiProxy") || "" };
+const cfg = { wt: +(localStorage.getItem("wt") || 1), wo: +(localStorage.getItem("wo") || 10), thr: +(localStorage.getItem("thr") || 5), proxy: localStorage.getItem("kalshiProxy") || "", late: (localStorage.getItem("late") ?? "1") === "1" };
+// debug: ?now=2026-11-23T13:04:00-08:00 shifts the clock for the entry rules
+const NOW_OFF = (() => { const q = new URLSearchParams(location.search).get("now"); const t = q ? Date.parse(q) : NaN; return isFinite(t) ? t - Date.now() : 0; })();
+const nowMs = () => Date.now() + NOW_OFF;
+const ptHour = (ms) => +new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hourCycle: "h23" }).format(new Date(ms));
+const mmss = (ms) => { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); };
 
 // ---------- state ----------
 const S = {
@@ -372,6 +396,8 @@ function entry(now) {
   if (!isFinite(up) && km) up = +km.yes_ask_dollars; if (!isFinite(dn) && km) dn = +km.no_ask_dollars;
   if (!(up > 0 && up < 1)) up = null; if (!(dn > 0 && dn < 1)) dn = null;
   const E = { w, tLeft, target, src, up, dn, km };
+  E.aft = ptHour(now) >= 12 && ptHour(now) < 18; E.elapsed = (now - w.open) / 60000;
+  if (cfg.late && tLeft >= 1 && E.elapsed < 12) E.lateWait = w.open + 12 * 60000 - now;
   const sig = S.sigma1m; if (!S.price || !target || !sig) return E;
   const tEff = tLeft >= 1 ? tLeft - 2 / 3 : Math.max(tLeft ** 3 / 3, 0.0005);
   E.z = Math.log(S.price / target) / (sig * Math.sqrt(tEff)); E.pv = phi(E.z);
@@ -393,9 +419,20 @@ function entry(now) {
     if (price != null && !okP(price)) { side = 0; why = "That side costs under 5¢ or over 95¢; edge there is model noise."; }
     else if (edge != null && edge < thr) { why = `Direction says ${side > 0 ? "Up" : "Down"}, but Kalshi already prices it in: edge ${sgn(edge * 100, 1)} pts, need +${cfg.thr}.`; side = 0; }
   }
+  // backtest-driven gates
+  const elapsed = (now - w.open) / 60000; const aft = ptHour(now) >= 12 && ptHour(now) < 18; E.aft = aft; E.elapsed = elapsed;
+  const sideName = side > 0 ? "Up" : side < 0 ? "Down" : null;
+  if (cfg.late && tLeft >= 1 && elapsed < 12) {
+    E.lateWait = w.open + 12 * 60000 - now; side = 0;
+    why = `WAIT — late-entry window opens in ${mmss(E.lateWait)}.` + (sideName ? ` Leaning ${sideName} right now.` : " " + why);
+  } else if (side && cfg.late) {
+    const price = side > 0 ? up : dn;
+    if (price != null && (price < 0.85 || price > 0.95)) { why = `Late entry needs the favorite at 85–95¢; ${sideName} is ${(price * 100).toFixed(0)}¢.`; side = 0; }
+  }
+  if (side && aft && elapsed < 10) { why = `Afternoon block: no GO before minute 10 (early favorites lost about 31¢ per $1 in the backtest). Leaning ${sideName}.`; side = 0; }
   if (side) { call = side > 0 ? "GO UP" : "GO DOWN"; const p = side > 0 ? E.pm : 1 - E.pm; const agree = Math.abs(all);
     E.strength = p >= 0.78 && agree >= 25 ? "STRONG" : p >= 0.7 || agree >= 25 ? "MODERATE" : "WEAK";
-    why = `Model ${side > 0 ? "Up" : "Down"} ${(p * 100).toFixed(0)}% with order flow ${all >= 0 ? "bullish" : "bearish"} (${sgn(all)}). ` + ((side > 0 ? up : dn) != null ? `Edge ${sgn((side > 0 ? E.eu : E.ed) * 100, 1)} pts after fees.` : `Only if ${side > 0 ? "Up" : "Down"} costs ≤ ${Math.floor((side > 0 ? E.maxUp : E.maxDn) * 100)}¢ on Kalshi.`); }
+    why = `Model ${side > 0 ? "Up" : "Down"} ${(p * 100).toFixed(0)}% with order flow ${all >= 0 ? "bullish" : "bearish"} (${sgn(all)}). ` + ((side > 0 ? up : dn) != null ? `Edge ${sgn((side > 0 ? E.eu : E.ed) * 100, 1)} pts after fees.` : (cfg.late ? `Only if ${side > 0 ? "Up" : "Down"} costs 85–95¢ on Kalshi (and ≤ ${Math.floor((side > 0 ? E.maxUp : E.maxDn) * 100)}¢).` : `Only if ${side > 0 ? "Up" : "Down"} costs ≤ ${Math.floor((side > 0 ? E.maxUp : E.maxDn) * 100)}¢ on Kalshi.`)); }
   E.call = call; E.why = why; E.side = side; return E;
 }
 
@@ -410,7 +447,7 @@ function render() {
   for (const [k] of METERS) setGauge("m_" + k, S.meters[k], word(S.meters[k]), S.raw[k + "Det"]);
   setGauge("gAll", S.meters.all, word(S.meters.all), "6 meters combined");
   // entry
-  const E = entry(now); const left = Math.max(0, E.w.close - now);
+  const tnow = nowMs(); const E = entry(tnow); const left = Math.max(0, E.w.close - tnow);
   $("count").textContent = String(Math.floor(left / 60000)).padStart(2, "0") + ":" + String(Math.floor(left / 1000) % 60).padStart(2, "0");
   $("count").className = "count" + (left < 60000 ? " hot" : ""); $("winLabel").textContent = tstr(E.w.open) + " – " + tstr(E.w.close);
   $("vTarget").innerHTML = E.target ? usd(E.target) + `<div class="sub" style="font-family:inherit">${E.src}</div>` : "—";
@@ -422,7 +459,9 @@ function render() {
   $("vEdge").innerHTML = E.eu != null || E.ed != null ? [E.eu, E.ed].map((e) => e == null ? "—" : `<span class="${e > 0 ? "pos" : "neg"}">${sgn(e * 100, 1)}</span>`).join(" / ") + " pts" : "—";
   if (E.score != null) setGauge("gEntry", E.score, E.score > 0 ? `Up ${(E.pm * 100).toFixed(0)}%` : `Down ${((1 - E.pm) * 100).toFixed(0)}%`, "");
   const c = $("call"); c.textContent = E.call || "WAIT"; c.className = "callword " + (E.side > 0 ? "up" : E.side < 0 ? "down" : "wait");
-  $("strength").textContent = E.side ? E.strength + " signal" : ""; $("strength").className = "strength " + (E.side > 0 ? "pos" : E.side < 0 ? "neg" : "");
+  $("strength").textContent = E.side ? E.strength + " signal" : (E.lateWait != null ? "Late-entry window opens in " + mmss(E.lateWait) : "");
+  $("aftBanner").style.display = E.aft ? "" : "none";
+  $("earlyNote").style.display = !cfg.late && E.elapsed != null && E.elapsed >= 1 && E.elapsed < 6 ? "" : "none"; $("strength").className = "strength " + (E.side > 0 ? "pos" : E.side < 0 ? "neg" : "");
   $("why").textContent = E.why || (S.price ? "Waiting for target and volatility…" : "Connecting to live order books…");
   renderFlowTable(); renderPrice(E, now); renderFlowChart(); renderTape(now);
 }
@@ -472,7 +511,8 @@ function init() {
   makeGauge($("gEntry"), "", "Down", "Up"); makeGauge($("gAll"), "");
   $("meters").innerHTML = METERS.map(([k]) => `<div class="meter gwrap" id="m_${k}"></div>`).join("");
   for (const [k, n] of METERS) makeGauge($("m_" + k), n);
-  $("sWT").value = cfg.wt; $("sWO").value = cfg.wo; $("sThr").value = cfg.thr; $("sProxy").value = cfg.proxy;
+  $("sWT").value = cfg.wt; $("sWO").value = cfg.wo; $("sThr").value = cfg.thr; $("sProxy").value = cfg.proxy; $("sLate").checked = cfg.late;
+  $("sLate").onchange = () => { cfg.late = $("sLate").checked; localStorage.setItem("late", cfg.late ? "1" : "0"); render(); };
   $("sSave").onclick = () => { cfg.wt = +$("sWT").value || 1; cfg.wo = +$("sWO").value || 10; cfg.thr = +$("sThr").value || 5; cfg.proxy = $("sProxy").value.trim();
     localStorage.setItem("wt", cfg.wt); localStorage.setItem("wo", cfg.wo); localStorage.setItem("thr", cfg.thr); localStorage.setItem("kalshiProxy", cfg.proxy); S.k.base = null; S.k.nextProbe = 0; kalshiLoop(); };
   connectCb(); connectKr(); loadCandles(); kalshiLoop();
